@@ -1,0 +1,74 @@
+name: 18-post-cutover-smoke-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Optional single domain to test. Leave blank to test all enabled domains."
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke-test-prd:
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Assume target provisioner role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_TARGET_ACCOUNT_ID }}:role/${{ vars.TARGET_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Load managed domain outputs
+        id: terraform_outputs
+        working-directory: terraform/envs/prd
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          TF_STATE_BUCKET_VAR: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX_VAR: ${{ vars.TF_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_REGION_VAR:?Missing required variable AWS_REGION}"
+          : "${TF_STATE_BUCKET_VAR:?Missing required variable TF_STATE_BUCKET}"
+          : "${TF_STATE_PREFIX_VAR:?Missing required variable TF_STATE_PREFIX}"
+
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET_VAR}" \
+            -backend-config="key=${TF_STATE_PREFIX_VAR}/envs/prd.tfstate" \
+            -backend-config="region=${AWS_REGION_VAR}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+          DOMAIN_HOSTED_ZONES_JSON="$RUNNER_TEMP/domain-hosted-zones.json"
+          terraform output -json domain_hosted_zones > "$DOMAIN_HOSTED_ZONES_JSON"
+
+          {
+            echo "domain_hosted_zones_json=${DOMAIN_HOSTED_ZONES_JSON}"
+            echo "receipt_rule_set_name=$(terraform output -raw receipt_rule_set_name)"
+            echo "shared_bucket_name=$(terraform output -raw shared_bucket_name)"
+            echo "forwarder_lambda_arn=$(terraform output -raw forwarder_lambda_arn)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run post-cutover smoke test
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          DOMAIN_HOSTED_ZONES_JSON: ${{ steps.terraform_outputs.outputs.domain_hosted_zones_json }}
+          EXPECTED_RULE_SET_NAME: ${{ steps.terraform_outputs.outputs.receipt_rule_set_name }}
+          SHARED_BUCKET_NAME: ${{ steps.terraform_outputs.outputs.shared_bucket_name }}
+          FORWARDER_LAMBDA_ARN: ${{ steps.terraform_outputs.outputs.forwarder_lambda_arn }}
+          SMOKE_TEST_DOMAIN: ${{ github.event.inputs.domain || '' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/post_cutover_smoke_test.py

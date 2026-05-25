@@ -1,0 +1,111 @@
+name: 15-cutover-readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  readiness-prd:
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assume target provisioner role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_TARGET_ACCOUNT_ID }}:role/${{ vars.TARGET_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Check cutover readiness
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          TARGET_HOSTED_ZONE_ID: ${{ vars.TARGET_HOSTED_ZONE_ID }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_REGION_VAR:?Missing required variable AWS_REGION}"
+          : "${DOMAIN_NAME:?Missing required domain name}"
+          : "${TARGET_HOSTED_ZONE_ID:?Missing required target hosted zone id}"
+
+          VERIFICATION_STATUS="$(
+            aws ses get-identity-verification-attributes \
+              --region "${AWS_REGION_VAR}" \
+              --identities "${DOMAIN_NAME}" \
+              --query "VerificationAttributes.\"${DOMAIN_NAME}\".VerificationStatus" \
+              --output text
+          )"
+
+          DKIM_ENABLED="$(
+            aws ses get-identity-dkim-attributes \
+              --region "${AWS_REGION_VAR}" \
+              --identities "${DOMAIN_NAME}" \
+              --query "DkimAttributes.\"${DOMAIN_NAME}\".DkimEnabled" \
+              --output text
+          )"
+
+          DKIM_VERIFICATION_STATUS="$(
+            aws ses get-identity-dkim-attributes \
+              --region "${AWS_REGION_VAR}" \
+              --identities "${DOMAIN_NAME}" \
+              --query "DkimAttributes.\"${DOMAIN_NAME}\".DkimVerificationStatus" \
+              --output text
+          )"
+
+          ACTIVE_RULE_SET="$(
+            aws ses describe-active-receipt-rule-set \
+              --region "${AWS_REGION_VAR}" \
+              --query "Metadata.Name" \
+              --output text 2>/dev/null || true
+          )"
+
+          if [ "${ACTIVE_RULE_SET}" = "None" ] || [ "${ACTIVE_RULE_SET}" = "null" ]; then
+            ACTIVE_RULE_SET="none"
+          fi
+
+          PRODUCTION_ACCESS_ENABLED="$(
+            aws sesv2 get-account \
+              --region "${AWS_REGION_VAR}" \
+              --query "ProductionAccessEnabled" \
+              --output text
+          )"
+
+          TARGET_NAME_SERVERS="$(
+            aws route53 get-hosted-zone \
+              --id "${TARGET_HOSTED_ZONE_ID}" \
+              --query 'DelegationSet.NameServers' \
+              --output text
+          )"
+
+          REGISTERED_NAME_SERVERS="$(
+            aws route53domains get-domain-detail \
+              --region us-east-1 \
+              --domain-name "${DOMAIN_NAME}" \
+              --query 'Nameservers[].Name' \
+              --output text
+          )"
+
+          RECEIPT_RULE_SET_READY="false"
+          if [ "${ACTIVE_RULE_SET}" = "domain-forwarding" ]; then
+            RECEIPT_RULE_SET_READY="true"
+          fi
+
+          {
+            echo "## Cutover Readiness"
+            echo ""
+            echo "- Domain: \`${DOMAIN_NAME}\`"
+            echo "- SES region: \`${AWS_REGION_VAR}\`"
+            echo "- SES verification status: \`${VERIFICATION_STATUS}\`"
+            echo "- SES DKIM enabled: \`${DKIM_ENABLED}\`"
+            echo "- SES DKIM verification status: \`${DKIM_VERIFICATION_STATUS}\`"
+            echo "- SES production access enabled: \`${PRODUCTION_ACCESS_ENABLED}\`"
+            echo "- Active SES receipt rule set: \`${ACTIVE_RULE_SET}\`"
+            echo "- Target receipt rule set currently active: \`${RECEIPT_RULE_SET_READY}\`"
+            echo "- Target hosted zone id: \`${TARGET_HOSTED_ZONE_ID}\`"
+            echo "- Target hosted zone nameservers: \`${TARGET_NAME_SERVERS}\`"
+            echo "- Registered domain nameservers: \`${REGISTERED_NAME_SERVERS}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

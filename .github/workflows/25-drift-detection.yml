@@ -1,0 +1,100 @@
+name: 25-drift-detection
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "31 12 * * 1"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  drift-prd:
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/ses-email-forwarder/package-lock.json
+
+      - name: Build Lambda package
+        working-directory: lambda/ses-email-forwarder
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Assume target provisioner role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_TARGET_ACCOUNT_ID }}:role/${{ vars.TARGET_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform drift plan
+        id: drift_plan
+        working-directory: terraform/envs/prd
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          AWS_TARGET_ACCOUNT_ID_VAR: ${{ vars.AWS_TARGET_ACCOUNT_ID }}
+          AWS_SOURCE_ACCOUNT_ID_VAR: ${{ vars.AWS_SOURCE_ACCOUNT_ID }}
+          TF_STATE_BUCKET_VAR: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX_VAR: ${{ vars.TF_STATE_PREFIX }}
+          SOURCE_DNS_ROLE_NAME_VAR: ${{ vars.SOURCE_DNS_ROLE_NAME }}
+          SOURCE_HOSTED_ZONE_ID_VAR: ${{ vars.SOURCE_HOSTED_ZONE_ID }}
+        run: |
+          set -euo pipefail
+
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET_VAR}" \
+            -backend-config="key=${TF_STATE_PREFIX_VAR}/envs/prd.tfstate" \
+            -backend-config="region=${AWS_REGION_VAR}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+          PLAN_TEXT="$RUNNER_TEMP/prd-drift-plan.txt"
+          set +e
+          terraform plan -detailed-exitcode -input=false \
+            -var "target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}" \
+            -var "source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}" \
+            -var "primary_region=${AWS_REGION_VAR}" \
+            -var "source_authoritative_zone_id=${SOURCE_HOSTED_ZONE_ID_VAR}" \
+            -var "source_dns_role_arn=arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}" \
+            -var "activate_receipt_rule_set=false" \
+            -no-color > "$PLAN_TEXT" 2>&1
+          PLAN_EXIT=$?
+          set -e
+
+          echo "plan_exit=${PLAN_EXIT}" >> "$GITHUB_OUTPUT"
+          echo "plan_text=${PLAN_TEXT}" >> "$GITHUB_OUTPUT"
+
+          if [ "$PLAN_EXIT" = "0" ]; then
+            echo "No Terraform drift detected." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$PLAN_EXIT" = "2" ]; then
+            echo "Terraform drift detected. See uploaded plan artifact." >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat "$PLAN_TEXT"
+            exit "$PLAN_EXIT"
+          fi
+
+      - name: Upload drift plan text
+        uses: actions/upload-artifact@v6
+        with:
+          name: prd-drift-plan
+          path: ${{ steps.drift_plan.outputs.plan_text }}
+
+      - name: Fail when drift is detected
+        if: steps.drift_plan.outputs.plan_exit == '2'
+        run: |
+          echo "Terraform drift detected."
+          exit 1

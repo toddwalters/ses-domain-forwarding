@@ -1,0 +1,183 @@
+name: 00-bootstrap-github-aws
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-target:
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Configure AWS target bootstrap credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TARGET_BOOTSTRAP_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TARGET_BOOTSTRAP_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_TARGET_BOOTSTRAP_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Bootstrap target account
+        working-directory: terraform/bootstrap/target-account
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          AWS_TARGET_ACCOUNT_ID_VAR: ${{ vars.AWS_TARGET_ACCOUNT_ID }}
+          AWS_SOURCE_ACCOUNT_ID_VAR: ${{ vars.AWS_SOURCE_ACCOUNT_ID }}
+          TF_STATE_BUCKET_VAR: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX_VAR: ${{ vars.TF_STATE_PREFIX }}
+          TARGET_ROLE_NAME_VAR: ${{ vars.TARGET_ROLE_NAME }}
+          SOURCE_DNS_ROLE_NAME_VAR: ${{ vars.SOURCE_DNS_ROLE_NAME }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_REGION_VAR:?Missing required variable AWS_REGION}"
+          : "${AWS_TARGET_ACCOUNT_ID_VAR:?Missing required variable AWS_TARGET_ACCOUNT_ID}"
+          : "${AWS_SOURCE_ACCOUNT_ID_VAR:?Missing required variable AWS_SOURCE_ACCOUNT_ID}"
+          : "${TF_STATE_BUCKET_VAR:?Missing required variable TF_STATE_BUCKET}"
+          : "${TF_STATE_PREFIX_VAR:?Missing required variable TF_STATE_PREFIX}"
+          : "${TARGET_ROLE_NAME_VAR:?Missing required variable TARGET_ROLE_NAME}"
+          : "${SOURCE_DNS_ROLE_NAME_VAR:?Missing required variable SOURCE_DNS_ROLE_NAME}"
+
+          STATE_KEY="${TF_STATE_PREFIX_VAR}/bootstrap/target-account.tfstate"
+          BACKEND_CONFIG=(
+            "-backend-config=bucket=${TF_STATE_BUCKET_VAR}"
+            "-backend-config=key=${STATE_KEY}"
+            "-backend-config=region=${AWS_REGION_VAR}"
+            "-backend-config=use_lockfile=true"
+            "-backend-config=encrypt=true"
+          )
+          COMMON_TF_VARS=(
+            "-var=region=${AWS_REGION_VAR}"
+            "-var=target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}"
+            "-var=source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}"
+            "-var=repo_full_name=${{ github.repository }}"
+            "-var=environment_name=prd"
+            "-var=tf_state_bucket_name=${TF_STATE_BUCKET_VAR}"
+            "-var=tf_state_prefix=${TF_STATE_PREFIX_VAR}"
+            "-var=target_role_name=${TARGET_ROLE_NAME_VAR}"
+            "-var=source_dns_role_name=${SOURCE_DNS_ROLE_NAME_VAR}"
+          )
+
+          write_backend_override() {
+            printf 'terraform {\n  backend "s3" {}\n}\n' > backend_override.tf
+          }
+
+          apply_target_bootstrap() {
+            terraform apply -auto-approve -input=false "${COMMON_TF_VARS[@]}"
+          }
+
+          if aws s3api head-object --bucket "${TF_STATE_BUCKET_VAR}" --key "${STATE_KEY}" >/dev/null 2>&1; then
+            echo "Existing remote bootstrap state found; using S3 backend."
+            write_backend_override
+
+            terraform init \
+              -reconfigure \
+              "${BACKEND_CONFIG[@]}"
+
+            apply_target_bootstrap
+          else
+            terraform init -backend=false -input=false
+
+            if aws s3api head-bucket --bucket "${TF_STATE_BUCKET_VAR}" >/dev/null 2>&1; then
+              echo "State bucket exists but bootstrap state is missing; importing partial bootstrap resources."
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_s3_bucket.tf_state "${TF_STATE_BUCKET_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_s3_bucket_public_access_block.tf_state "${TF_STATE_BUCKET_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_s3_bucket_ownership_controls.tf_state "${TF_STATE_BUCKET_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_s3_bucket_server_side_encryption_configuration.tf_state "${TF_STATE_BUCKET_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_s3_bucket_versioning.tf_state "${TF_STATE_BUCKET_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_iam_openid_connect_provider.github "arn:aws:iam::${AWS_TARGET_ACCOUNT_ID_VAR}:oidc-provider/token.actions.githubusercontent.com"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_iam_role.github_provisioner "${TARGET_ROLE_NAME_VAR}"
+              terraform import -input=false "${COMMON_TF_VARS[@]}" aws_iam_role_policy.github_provisioner "${TARGET_ROLE_NAME_VAR}:${TARGET_ROLE_NAME_VAR}-policy"
+            else
+              echo "No remote bootstrap state or state bucket found; creating target bootstrap resources from local state."
+            fi
+
+            apply_target_bootstrap
+
+            write_backend_override
+
+            terraform init \
+              -migrate-state \
+              -force-copy \
+              "${BACKEND_CONFIG[@]}"
+          fi
+
+          {
+            echo "## Target Bootstrap"
+            echo ""
+            echo "- State bucket: \`${TF_STATE_BUCKET_VAR}\`"
+            echo "- State key: \`${STATE_KEY}\`"
+            echo "- GitHub role: \`arn:aws:iam::${AWS_TARGET_ACCOUNT_ID_VAR}:role/${TARGET_ROLE_NAME_VAR}\`"
+            echo "- Expected source DNS role: \`arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  bootstrap-source-dns:
+    runs-on: ubuntu-latest
+    environment: prd
+    needs: bootstrap-target
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Configure AWS source bootstrap credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_SOURCE_BOOTSTRAP_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SOURCE_BOOTSTRAP_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SOURCE_BOOTSTRAP_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Bootstrap source DNS role
+        working-directory: terraform/bootstrap/source-dns
+        env:
+          AWS_TARGET_ACCOUNT_ID_VAR: ${{ vars.AWS_TARGET_ACCOUNT_ID }}
+          AWS_SOURCE_ACCOUNT_ID_VAR: ${{ vars.AWS_SOURCE_ACCOUNT_ID }}
+          TARGET_ROLE_NAME_VAR: ${{ vars.TARGET_ROLE_NAME }}
+          SOURCE_DNS_ROLE_NAME_VAR: ${{ vars.SOURCE_DNS_ROLE_NAME }}
+          SOURCE_HOSTED_ZONE_ID_VAR: ${{ vars.SOURCE_HOSTED_ZONE_ID }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_TARGET_ACCOUNT_ID_VAR:?Missing required variable AWS_TARGET_ACCOUNT_ID}"
+          : "${AWS_SOURCE_ACCOUNT_ID_VAR:?Missing required variable AWS_SOURCE_ACCOUNT_ID}"
+          : "${TARGET_ROLE_NAME_VAR:?Missing required variable TARGET_ROLE_NAME}"
+          : "${SOURCE_DNS_ROLE_NAME_VAR:?Missing required variable SOURCE_DNS_ROLE_NAME}"
+          : "${SOURCE_HOSTED_ZONE_ID_VAR:?Missing required variable SOURCE_HOSTED_ZONE_ID}"
+
+          if aws iam get-role --role-name "${SOURCE_DNS_ROLE_NAME_VAR}" >/dev/null 2>&1; then
+            {
+              echo "## Source DNS Bootstrap"
+              echo ""
+              echo "- Source DNS role already exists: \`${SOURCE_DNS_ROLE_NAME_VAR}\`"
+              echo "- No changes made."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          terraform init -backend=false -input=false
+          terraform apply -auto-approve -input=false \
+            -var "target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}" \
+            -var "source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}" \
+            -var "target_role_name=${TARGET_ROLE_NAME_VAR}" \
+            -var "source_dns_role_name=${SOURCE_DNS_ROLE_NAME_VAR}" \
+            -var "source_authoritative_zone_id=${SOURCE_HOSTED_ZONE_ID_VAR}"
+
+          {
+            echo "## Source DNS Bootstrap"
+            echo ""
+            echo "- Created source DNS role: \`arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}\`"
+            echo "- Hosted zone scope: \`${SOURCE_HOSTED_ZONE_ID_VAR}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

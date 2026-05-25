@@ -1,0 +1,105 @@
+name: 20-terraform-apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      activate_receipt_rule_set:
+        description: "Activate the target SES receipt rule set."
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply-prd:
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/ses-email-forwarder/package-lock.json
+
+      - name: Build Lambda package
+        working-directory: lambda/ses-email-forwarder
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm audit --omit=dev
+          npm ls --all
+          npm test
+          npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Assume target provisioner role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_TARGET_ACCOUNT_ID }}:role/${{ vars.TARGET_ROLE_NAME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform apply
+        working-directory: terraform/envs/prd
+        env:
+          AWS_REGION_VAR: ${{ vars.AWS_REGION }}
+          AWS_TARGET_ACCOUNT_ID_VAR: ${{ vars.AWS_TARGET_ACCOUNT_ID }}
+          AWS_SOURCE_ACCOUNT_ID_VAR: ${{ vars.AWS_SOURCE_ACCOUNT_ID }}
+          TF_STATE_BUCKET_VAR: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX_VAR: ${{ vars.TF_STATE_PREFIX }}
+          SOURCE_DNS_ROLE_NAME_VAR: ${{ vars.SOURCE_DNS_ROLE_NAME }}
+          SOURCE_HOSTED_ZONE_ID_VAR: ${{ vars.SOURCE_HOSTED_ZONE_ID }}
+          ACTIVATE_RECEIPT_RULE_SET_VAR: ${{ inputs.activate_receipt_rule_set }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_REGION_VAR:?Missing required variable AWS_REGION}"
+          : "${AWS_TARGET_ACCOUNT_ID_VAR:?Missing required variable AWS_TARGET_ACCOUNT_ID}"
+          : "${AWS_SOURCE_ACCOUNT_ID_VAR:?Missing required variable AWS_SOURCE_ACCOUNT_ID}"
+          : "${TF_STATE_BUCKET_VAR:?Missing required variable TF_STATE_BUCKET}"
+          : "${TF_STATE_PREFIX_VAR:?Missing required variable TF_STATE_PREFIX}"
+          : "${SOURCE_DNS_ROLE_NAME_VAR:?Missing required variable SOURCE_DNS_ROLE_NAME}"
+          : "${SOURCE_HOSTED_ZONE_ID_VAR:?Missing required variable SOURCE_HOSTED_ZONE_ID}"
+
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET_VAR}" \
+            -backend-config="key=${TF_STATE_PREFIX_VAR}/envs/prd.tfstate" \
+            -backend-config="region=${AWS_REGION_VAR}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+          terraform apply -auto-approve -input=false \
+            -var "target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}" \
+            -var "source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}" \
+            -var "primary_region=${AWS_REGION_VAR}" \
+            -var "source_authoritative_zone_id=${SOURCE_HOSTED_ZONE_ID_VAR}" \
+            -var "source_dns_role_arn=arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}" \
+            -var "activate_receipt_rule_set=${ACTIVATE_RECEIPT_RULE_SET_VAR}"
+
+          terraform output -json > terraform-outputs.json
+
+          {
+            echo "## Terraform Apply"
+            echo ""
+            echo "- Target account: \`${AWS_TARGET_ACCOUNT_ID_VAR}\`"
+            echo "- Source DNS account: \`${AWS_SOURCE_ACCOUNT_ID_VAR}\`"
+            echo "- Receipt rule set activation: \`${ACTIVATE_RECEIPT_RULE_SET_VAR}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Terraform outputs
+        uses: actions/upload-artifact@v6
+        with:
+          name: prd-terraform-outputs
+          path: terraform/envs/prd/terraform-outputs.json

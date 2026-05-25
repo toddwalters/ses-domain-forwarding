@@ -1,0 +1,17 @@
+{
+  "name": "ses-email-forwarder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared SES inbound email forwarder for one or more managed domains.",
+  "main": "index.js",
+  "scripts": {
+    "audit": "npm audit --omit=dev",
+    "build": "python3 scripts/build_package.py",
+    "test": "node --test"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,63 @@
+name: 05-validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check tracked Terraform variable files
+        run: |
+          bash scripts/check-no-tracked-tfvars.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/ses-email-forwarder/package-lock.json
+
+      - name: Validate Lambda
+        working-directory: lambda/ses-email-forwarder
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm audit --omit=dev
+          npm ls --all
+          npm test
+          npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive terraform
+
+      - name: Terraform validate bootstrap target
+        working-directory: terraform/bootstrap/target-account
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Terraform validate bootstrap source DNS
+        working-directory: terraform/bootstrap/source-dns
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Terraform validate prd
+        working-directory: terraform/envs/prd
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate

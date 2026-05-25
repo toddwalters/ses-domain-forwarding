@@ -1,0 +1,67 @@
+target_account_id         = "111122223333"
+source_account_id         = "444455556666"
+primary_region            = "us-east-2"
+source_authoritative_zone_id = "Z1234567890EXAMPLE"
+
+project_name              = "ses-domain-forwarding"
+environment_name          = "prd"
+shared_inbound_bucket_name = "example-prd-ses-inbound-us-east-2"
+shared_lambda_function_name = "ses-email-forwarder"
+receipt_rule_set_name     = "domain-forwarding"
+
+default_forwarding_destinations = [
+  "ops@example.net"
+]
+
+domain_definitions = {
+  "example.com" = {
+    enabled              = true
+    receipt_rule_enabled = true
+
+    source_dns = {
+      create_verification_records      = false
+      authoritative_zone_id            = null
+      existing_ses_verification_tokens = []
+    }
+
+    preserved_records = {
+      google_verification = {
+        label   = "selector"
+        type    = "CNAME"
+        ttl     = 300
+        records = ["gv-example.dv.googlehosted.com"]
+      }
+    }
+
+    forwarding = {
+      from_local_part     = "noreply"
+      subject_prefix      = ""
+      s3_object_prefix    = "domains/example.com/"
+      destinations        = ["ops@example.net"]
+      explicit_recipients = ["info", "abuse"]
+      catch_all           = true
+    }
+  }
+
+  "example.org" = {
+    enabled              = true
+    receipt_rule_enabled = true
+
+    source_dns = {
+      create_verification_records      = false
+      authoritative_zone_id            = null
+      existing_ses_verification_tokens = []
+    }
+
+    preserved_records = {}
+
+    forwarding = {
+      from_local_part     = "relay"
+      subject_prefix      = "[Forwarded] "
+      s3_object_prefix    = "domains/example.org/"
+      destinations        = ["mail-archive@example.net", "support@example.net"]
+      explicit_recipients = ["support", "billing"]
+      catch_all           = false
+    }
+  }
+}

@@ -1,0 +1,95 @@
+# SES Domain Forwarding
+
+Terraform and Lambda scaffolding for managing one or more Amazon SES inbound
+email domains and forwarding messages to one or more downstream addresses.
+
+The repository is designed for teams that want:
+
+- a shared SES inbound stack in one AWS account and region
+- one or more managed Route53 hosted zones and SES identities
+- per-domain forwarding rules, including catch-all behavior
+- GitHub Actions deployment through AWS OIDC
+- a small forwarding Lambda with zero third-party runtime dependencies
+
+Before using the repository for a real environment, review
+[docs/runbooks/prerequisites.md](docs/runbooks/prerequisites.md).
+
+## What This Repository Covers
+
+- shared SES receipt rule set, inbound S3 bucket, Lambda, and SSM config
+- per-domain SES identity, DKIM, hosted zone, MX, and receipt rule resources
+- optional source-account Route53 support for migration-time verification
+- readiness, smoke-test, apply, and drift-detection GitHub workflows
+- CloudWatch alarms and structured Lambda logs for operational visibility
+
+## Public-Safe Design
+
+This repository is structured so that environment-specific values are provided
+through Terraform variables, GitHub environment variables, or ignored local
+`*.tfvars` files rather than committed directly into source control.
+
+Sensitive or organization-specific values that should stay out of Git include:
+
+- AWS account IDs and named local AWS profiles
+- real domain names and hosted zone IDs
+- real forwarding destinations
+- Terraform state bucket names
+- bootstrap credentials and session tokens
+
+See [terraform/envs/prd/terraform.tfvars.example](terraform/envs/prd/terraform.tfvars.example)
+for a public-safe example environment authoring file. The example includes
+multiple domains so the one-to-many authoring shape is visible without needing
+to infer it from module internals.
+
+Real `terraform.tfvars` and `*.tfvars.json` files should stay private and
+untracked. This repository ignores them through `.gitignore`, and CI validation
+fails if any non-example Terraform variable file is committed.
+
+## Repository Layout
+
+- `lambda/ses-email-forwarder/`: forwarding Lambda package and tests
+- `terraform/modules/`: reusable SES/Lambda/domain modules
+- `terraform/envs/prd/`: example live environment composition
+- `terraform/bootstrap/`: GitHub OIDC and optional source-DNS bootstrap stacks
+- `.github/workflows/`: validation, plan, apply, smoke-test, and drift workflows
+- `docs/runbooks/`: generic deployment and migration runbooks
+
+## Local Validation
+
+```bash
+cd lambda/ses-email-forwarder
+npm test
+npm audit --omit=dev
+npm run build
+
+cd ../../terraform/envs/prd
+terraform init -backend=false
+terraform validate
+terraform plan -refresh=false -input=false \
+  -var-file=terraform.tfvars
+```
+
+## GitHub Actions
+
+Deployment is intended to run through GitHub Actions using AWS OIDC:
+
+- `00-bootstrap-github-aws`
+- `05-validation`
+- `10-terraform-plan`
+- `15-cutover-readiness`
+- `18-post-cutover-smoke-test`
+- `20-terraform-apply`
+- `25-drift-detection`
+
+See [docs/runbooks/github-actions-deployment.md](docs/runbooks/github-actions-deployment.md)
+for the generic deployment flow and required variable categories.
+
+## Architecture Defaults
+
+- shared inbound S3 bucket and shared forwarding Lambda
+- per-domain raw-email prefixes such as `domains/example.com/`
+- sender rewrite pattern: `<from_local_part>@<domain>`
+- optional catch-all forwarding per domain
+- raw email lifecycle transitions:
+  - Standard-IA after 30 days
+  - Glacier Instant Retrieval after 90 days
