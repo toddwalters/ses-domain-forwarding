@@ -11,8 +11,16 @@ The repository is designed for teams that want:
 - GitHub Actions deployment through AWS OIDC
 - a small forwarding Lambda with zero third-party runtime dependencies
 
-Before using the repository for a real environment, review
-[docs/runbooks/prerequisites.md](docs/runbooks/prerequisites.md).
+Start here:
+
+1. Read [docs/runbooks/prerequisites.md](docs/runbooks/prerequisites.md) to
+   confirm the repository fits your use case.
+2. Follow [docs/runbooks/quickstart.md](docs/runbooks/quickstart.md) for the
+   first working environment.
+3. Use [docs/runbooks/add-a-domain.md](docs/runbooks/add-a-domain.md) when you
+   are ready to onboard another domain.
+4. Use [docs/runbooks/domain-migration-checklist.md](docs/runbooks/domain-migration-checklist.md)
+   only when moving an existing domain from another setup.
 
 ## What This Repository Covers
 
@@ -21,6 +29,52 @@ Before using the repository for a real environment, review
 - optional source-account Route53 support for migration-time verification
 - readiness, smoke-test, apply, and drift-detection GitHub workflows
 - CloudWatch alarms and structured Lambda logs for operational visibility
+
+## What This Repository Is Not
+
+This repository is a good fit for inbound forwarding and lightweight routing.
+It is not intended to be:
+
+- a full mailbox hosting system
+- a user-facing email product with IMAP or POP access
+- a bulk outbound email platform
+- a general-purpose mail processing pipeline with arbitrary custom logic
+
+If your needs look more like mailbox hosting, outbound campaigns, or complex
+message workflows, this repo is probably the wrong starting point.
+
+## Quick Start
+
+The shortest path to a first working environment is:
+
+1. Copy [terraform/envs/prd/terraform.tfvars.example](terraform/envs/prd/terraform.tfvars.example)
+   to a private local `terraform.tfvars`.
+2. Fill in your real AWS account IDs, bucket name, and one initial domain.
+3. Build and validate the Lambda package:
+
+```bash
+cd lambda/ses-email-forwarder
+npm test
+npm audit --omit=dev
+npm run build
+```
+
+4. Validate Terraform locally:
+
+```bash
+cd ../../terraform/envs/prd
+terraform init -backend=false
+terraform validate
+terraform plan -refresh=false -input=false -var-file=terraform.tfvars
+```
+
+5. Configure the GitHub environment variables and bootstrap secrets described
+   in [docs/runbooks/github-actions-deployment.md](docs/runbooks/github-actions-deployment.md).
+6. Run `00-bootstrap-github-aws`.
+7. Run `10-terraform-plan`, review it, then run `20-terraform-apply`.
+
+The detailed version of this path lives in
+[docs/runbooks/quickstart.md](docs/runbooks/quickstart.md).
 
 ## Public-Safe Design
 
@@ -53,6 +107,15 @@ fails if any non-example Terraform variable file is committed.
 - `terraform/bootstrap/`: GitHub OIDC and optional source-DNS bootstrap stacks
 - `.github/workflows/`: validation, plan, apply, smoke-test, and drift workflows
 - `docs/runbooks/`: generic deployment and migration runbooks
+
+## Operator Paths
+
+- New environment: [docs/runbooks/quickstart.md](docs/runbooks/quickstart.md)
+- Add a domain: [docs/runbooks/add-a-domain.md](docs/runbooks/add-a-domain.md)
+- Migrate an existing domain: [docs/runbooks/domain-migration-checklist.md](docs/runbooks/domain-migration-checklist.md)
+- GitHub Actions deployment: [docs/runbooks/github-actions-deployment.md](docs/runbooks/github-actions-deployment.md)
+- Architecture and security notes: [docs/runbooks/architecture-and-security.md](docs/runbooks/architecture-and-security.md)
+- Improvement backlog: [docs/runbooks/improvement-backlog.md](docs/runbooks/improvement-backlog.md)
 
 ## Local Validation
 

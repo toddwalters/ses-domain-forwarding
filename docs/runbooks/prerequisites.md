@@ -3,6 +3,9 @@
 Use this checklist to decide whether this repository fits your setup before you
 start wiring in real account and domain values.
 
+If it does fit, continue with [quickstart.md](quickstart.md). If you want the
+design tradeoffs first, read [architecture-and-security.md](architecture-and-security.md).
+
 ## What This Project Is
 
 This repository is for **SES inbound forwarding**, not full mailbox hosting.
