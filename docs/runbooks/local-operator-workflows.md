@@ -14,6 +14,16 @@ workflow step, or when you want to validate changes before pushing.
 - you have Terraform, Node.js, npm, and the AWS CLI installed
 - you are running commands from the repository root unless otherwise noted
 
+## Naming Cheatsheet
+
+- target account: the AWS account that will own the shared forwarding stack
+- source account: the AWS account a migrating domain is moving from
+- source hosted zone: the DNS zone used only for migration-time SES
+  verification support
+- receipt rule set activation: whether the shared SES inbound rule set is live
+- steady-state domain config: `domain_definitions`
+- migration-only domain config: `migration_overrides`
+
 ## `05-validation`
 
 GitHub workflow purpose:
