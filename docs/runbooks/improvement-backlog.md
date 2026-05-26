@@ -43,9 +43,9 @@ Status: in progress
 
 ### 5. Security And Release Hygiene
 
-Status: planned
+Status: in progress
 
-- pin GitHub Actions by SHA once action versions stabilize
+- pin GitHub Actions by SHA
 - add a short threat model or security review checklist
 - document how operators should review Lambda dependency updates
 

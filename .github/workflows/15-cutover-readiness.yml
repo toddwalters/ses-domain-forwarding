@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: prd
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Assume target provisioner role
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@796449b3e38e3c256861227399e58b780e0e5538 # v6
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_TARGET_ACCOUNT_ID }}:role/${{ vars.TARGET_ROLE_NAME }}
           aws-region: ${{ vars.AWS_REGION }}
