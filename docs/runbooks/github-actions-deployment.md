@@ -11,18 +11,46 @@ If you need local equivalents for these workflows, use
 Configure these environment variables before running the bootstrap workflow:
 
 - `AWS_REGION`
+  - the primary AWS region for SES receiving and deployment
 - `AWS_TARGET_ACCOUNT_ID`
+  - the AWS account that will host the shared forwarding stack
 - `AWS_SOURCE_ACCOUNT_ID`
+  - the source AWS account used only for migration-time DNS support
 - `TF_STATE_BUCKET`
+  - the S3 bucket that stores Terraform state
 - `TF_STATE_PREFIX`
+  - the state-key prefix used within the Terraform state bucket
 - `TARGET_ROLE_NAME`
+  - the GitHub-assumable provisioner role in the target account
 - `SOURCE_DNS_ROLE_NAME`
+  - the migration-time DNS role in the source account
 - `SOURCE_HOSTED_ZONE_ID`
+  - the source hosted zone ID used only for migration-time verification writes
 - `DOMAIN_NAME`
+  - the operator-selected domain used by the cutover-readiness workflow
 - `TARGET_HOSTED_ZONE_ID`
+  - the hosted zone ID for the target domain used by cutover readiness
 
 Typical values vary by organization. Keep them in GitHub environment variables
 rather than committing them into the repository.
+
+## Naming Notes
+
+Some workflow variable names are intentionally implementation-specific because
+they match Terraform inputs, AWS resources, or existing workflow behavior.
+
+Operator translations:
+
+- "target" means the account that will own the shared SES forwarding stack
+- "source" means the account or zone a domain is being migrated from
+- "DNS role" means a migration-only role for temporary verification-record work
+- "receipt rule set activation" means making the shared SES rule set live for
+  inbound processing
+
+If you are onboarding a brand-new domain rather than migrating one, the
+`AWS_SOURCE_ACCOUNT_ID`, `SOURCE_DNS_ROLE_NAME`, and `SOURCE_HOSTED_ZONE_ID`
+concepts may exist in the workflow model without being active parts of the
+steady-state operator path.
 
 ## Required Bootstrap Secrets
 

@@ -125,6 +125,10 @@ fails if any non-example Terraform variable file is committed.
 - CloudWatch Logs Insights cookbook: [docs/runbooks/cloudwatch-logs-insights-cookbook.md](docs/runbooks/cloudwatch-logs-insights-cookbook.md)
 - Improvement backlog: [docs/runbooks/improvement-backlog.md](docs/runbooks/improvement-backlog.md)
 
+If some workflow or Terraform names feel more implementation-oriented than
+operator-oriented, the deployment and local-operator runbooks now include a
+short naming glossary.
+
 ## Local Validation
 
 ```bash

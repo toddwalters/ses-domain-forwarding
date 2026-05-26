@@ -70,6 +70,12 @@ Status: in progress
   framework value
 - review workflow names and variable names for maximum generic clarity
 
+Current progress:
+
+- historical bug/work-log files were removed from the public repo
+- workflow and operator variable names are now explained with a public-facing
+  glossary rather than left implicit
+
 ## Near-Term Implementation Order
 
 1. First-run clarity
