@@ -25,7 +25,7 @@ Status: in progress
 
 ### 3. Multi-Domain Operator Experience
 
-Status: planned
+Status: in progress
 
 - add a dry-run report that summarizes which domains, receipt rules, and
   forwarding routes will be created

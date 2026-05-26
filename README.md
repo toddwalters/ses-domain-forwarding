@@ -71,7 +71,8 @@ terraform plan -refresh=false -input=false -var-file=terraform.tfvars
 5. Configure the GitHub environment variables and bootstrap secrets described
    in [docs/runbooks/github-actions-deployment.md](docs/runbooks/github-actions-deployment.md).
 6. Run `00-bootstrap-github-aws`.
-7. Run `10-terraform-plan`, review it, then run `20-terraform-apply`.
+7. Run `10-terraform-plan`, review both the Terraform plan and the domain
+   summary in the GitHub step summary, then run `20-terraform-apply`.
 
 The detailed version of this path lives in
 [docs/runbooks/quickstart.md](docs/runbooks/quickstart.md).

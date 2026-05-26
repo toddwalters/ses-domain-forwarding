@@ -89,7 +89,8 @@ Run `00-bootstrap-github-aws` to create:
 ## 8. Plan And Apply
 
 1. Run `10-terraform-plan`
-2. Review the plan carefully
+2. Review the plan carefully, including the domain summary in the GitHub step
+   summary
 3. Run `20-terraform-apply`
 
 If you are staging a cutover rather than going live immediately, keep
