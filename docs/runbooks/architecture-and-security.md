@@ -84,6 +84,9 @@ project expects operators to:
 - review dependency updates before merging
 - prefer standard library or AWS SDK capabilities over adding new packages
 
+Use the [security review checklist](security-review-checklist.md) before live
+adoption and after meaningful workflow or infrastructure changes.
+
 ## When Not To Use This Repo
 
 Choose a different pattern if you need:
