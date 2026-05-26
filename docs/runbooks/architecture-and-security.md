@@ -33,6 +33,9 @@ The Lambda is configuration-driven rather than domain-specific. That makes:
 The tradeoff is that one Lambda becomes a shared operational surface. Good
 logging, alarms, and careful config review matter more in this model.
 
+For day-to-day debugging, use the
+[CloudWatch Logs Insights cookbook](cloudwatch-logs-insights-cookbook.md).
+
 ## Why One Shared Bucket
 
 Raw mail is stored under domain-specific prefixes such as:
