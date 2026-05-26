@@ -144,6 +144,12 @@ terraform plan -refresh=false -input=false \
   -var-file=terraform.tfvars
 ```
 
+If you prefer a lightweight task runner for common local flows, use:
+
+```bash
+make help
+```
+
 ## GitHub Actions
 
 Deployment is intended to run through GitHub Actions using AWS OIDC:

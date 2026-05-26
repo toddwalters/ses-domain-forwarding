@@ -7,6 +7,13 @@ This does not replace the GitHub Actions path as the default. It gives you a
 clear local equivalent when CI is unavailable, when you want to troubleshoot a
 workflow step, or when you want to validate changes before pushing.
 
+If you want a lightweight wrapper around the most common local commands, use
+the repository `Makefile` and start with:
+
+```bash
+make help
+```
+
 ## Assumptions
 
 - you have a private `terraform.tfvars`
