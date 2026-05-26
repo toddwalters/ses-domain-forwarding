@@ -64,7 +64,7 @@ Status: in progress
 
 ### 7. Public Repo Cleanup
 
-Status: planned
+Status: in progress
 
 - trim down project-memory residue that is more private-history than public
   framework value
