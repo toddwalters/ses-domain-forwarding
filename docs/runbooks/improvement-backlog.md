@@ -49,6 +49,11 @@ Status: in progress
 - add a short threat model or security review checklist
 - document how operators should review Lambda dependency updates
 
+Current progress:
+
+- GitHub Actions are pinned by SHA.
+- A repository-grounded security review checklist is now included.
+
 ### 6. CI Portability
 
 Status: planned
