@@ -29,12 +29,6 @@ domain_definitions = {
     enabled              = true
     receipt_rule_enabled = true
 
-    source_dns = {
-      create_verification_records      = false
-      authoritative_zone_id            = null
-      existing_ses_verification_tokens = []
-    }
-
     preserved_records = {}
 
     forwarding = {
@@ -49,15 +43,22 @@ domain_definitions = {
 }
 ```
 
-### Migration-only fields
+### Migration-only overrides
 
-Only use these when the domain is still being moved from another setup:
+Only use `migration_overrides` when the domain is still being moved from
+another setup:
 
-- `source_dns.create_verification_records`
-- `source_dns.authoritative_zone_id`
-- `source_dns.existing_ses_verification_tokens`
+```hcl
+migration_overrides = {
+  "example.com" = {
+    create_source_verification_records = true
+    source_authoritative_zone_id       = "Z1234567890EXAMPLE"
+    existing_ses_verification_tokens   = ["example-source-token"]
+  }
+}
+```
 
-For steady-state domains, keep them disabled or empty.
+For steady-state domains, keep `migration_overrides` empty.
 
 ## Decide The Routing Model
 
@@ -113,4 +114,4 @@ add:
 - the domain has the right forwarding destinations
 - `catch_all` matches the intended behavior
 - the S3 prefix matches the domain
-- migration-only source DNS fields are not left on for steady-state domains
+- migration-only overrides are not left on for steady-state domains

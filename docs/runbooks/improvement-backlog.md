@@ -29,7 +29,7 @@ Status: in progress
 
 - add a dry-run report that summarizes which domains, receipt rules, and
   forwarding routes will be created
-- consider splitting steady-state domain config from migration-only overrides
+- split steady-state domain config from migration-only overrides
 - add another realistic multi-domain example beyond the basic sample
 
 ### 4. Observability

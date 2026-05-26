@@ -11,6 +11,10 @@ The repository is designed for teams that want:
 - GitHub Actions deployment through AWS OIDC
 - a small forwarding Lambda with zero third-party runtime dependencies
 
+The public repo now treats steady-state domain behavior and migration-only
+overrides as separate concerns, so onboarding a brand-new domain does not
+require carrying source-DNS migration fields in the normal domain definition.
+
 Start here:
 
 1. Read [docs/runbooks/prerequisites.md](docs/runbooks/prerequisites.md) to

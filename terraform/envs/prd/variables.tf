@@ -52,12 +52,6 @@ variable "activate_receipt_rule_set" {
   default     = true
 }
 
-variable "create_source_verification_records" {
-  description = "Whether to publish temporary SES verification records into the source hosted zone for domains still mid-migration."
-  type        = bool
-  default     = false
-}
-
 variable "lambda_package_path" {
   description = "Path to the built Lambda zip package."
   type        = string
@@ -106,15 +100,10 @@ variable "global_region" {
 }
 
 variable "domain_definitions" {
-  description = "Canonical per-domain forwarding configuration."
+  description = "Canonical steady-state per-domain forwarding configuration."
   type = map(object({
     enabled              = bool
     receipt_rule_enabled = bool
-    source_dns = object({
-      create_verification_records      = bool
-      authoritative_zone_id            = optional(string)
-      existing_ses_verification_tokens = list(string)
-    })
     preserved_records = map(object({
       label   = string
       type    = string
@@ -129,6 +118,16 @@ variable "domain_definitions" {
       explicit_recipients = list(string)
       catch_all           = bool
     })
+  }))
+  default = {}
+}
+
+variable "migration_overrides" {
+  description = "Optional migration-only per-domain source DNS settings."
+  type = map(object({
+    create_source_verification_records = bool
+    source_authoritative_zone_id       = optional(string)
+    existing_ses_verification_tokens   = list(string)
   }))
   default = {}
 }
