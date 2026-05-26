@@ -37,3 +37,21 @@ output "ses_verification_records" {
     }
   }
 }
+
+output "domain_plan_summary" {
+  description = "Human-readable summary of enabled domains and their forwarding behavior."
+  value = {
+    for domain, config in local.enabled_domains : domain => {
+      receipt_rule_enabled            = config.receipt_rule_enabled
+      catch_all_enabled               = contains(keys(config.forwarding.forwardMapping), "@${domain}")
+      explicit_recipient_count        = length([for address in keys(config.forwarding.forwardMapping) : address if strcontains(address, "@") && address != "@${domain}"])
+      forwarding_destination_count    = length(config.forwarding.destinations)
+      forwarding_destinations         = config.forwarding.destinations
+      sender_identity                 = config.forwarding.fromEmail
+      s3_object_prefix                = config.forwarding.emailKeyPrefix
+      extra_record_count              = length(config.extra_records)
+      source_dns_verification_enabled = config.source_dns.create_verification_records
+      source_dns_token_count          = length(config.source_dns.existing_ses_verification_tokens)
+    }
+  }
+}

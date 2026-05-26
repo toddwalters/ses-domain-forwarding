@@ -43,7 +43,8 @@ bootstrap succeeds.
      verification records
 3. Open PRs normally.
    - `05-validation` runs Lambda and Terraform checks
-   - `10-terraform-plan` is used when an AWS-backed plan is needed
+   - `10-terraform-plan` is used when an AWS-backed plan is needed and now
+     includes a domain-level summary in the GitHub step summary
 4. Run `15-cutover-readiness` for a pre-cutover AWS state snapshot.
 5. Run `18-post-cutover-smoke-test` after cutover or after operational changes.
 6. Run `20-terraform-apply` after review.
