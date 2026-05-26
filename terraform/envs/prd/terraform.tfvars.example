@@ -18,12 +18,6 @@ domain_definitions = {
     enabled              = true
     receipt_rule_enabled = true
 
-    source_dns = {
-      create_verification_records      = false
-      authoritative_zone_id            = null
-      existing_ses_verification_tokens = []
-    }
-
     preserved_records = {
       google_verification = {
         label   = "selector"
@@ -47,12 +41,6 @@ domain_definitions = {
     enabled              = true
     receipt_rule_enabled = true
 
-    source_dns = {
-      create_verification_records      = false
-      authoritative_zone_id            = null
-      existing_ses_verification_tokens = []
-    }
-
     preserved_records = {}
 
     forwarding = {
@@ -63,5 +51,13 @@ domain_definitions = {
       explicit_recipients = ["support", "billing"]
       catch_all           = false
     }
+  }
+}
+
+migration_overrides = {
+  "example.org" = {
+    create_source_verification_records = true
+    source_authoritative_zone_id       = "Z1234567890EXAMPLE"
+    existing_ses_verification_tokens   = ["example-source-token"]
   }
 }

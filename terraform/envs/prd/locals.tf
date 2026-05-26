@@ -5,15 +5,23 @@ locals {
     Environment = var.environment_name
   }
 
+  migration_overrides = {
+    for domain_name, config in var.migration_overrides : domain_name => {
+      create_source_verification_records = config.create_source_verification_records
+      source_authoritative_zone_id       = coalesce(config.source_authoritative_zone_id, var.source_authoritative_zone_id)
+      existing_ses_verification_tokens   = config.existing_ses_verification_tokens
+    }
+  }
+
   domains = {
     for domain_name, config in var.domain_definitions : domain_name => {
       enabled              = config.enabled
       receipt_rule_enabled = config.receipt_rule_enabled
 
       source_dns = {
-        create_verification_records      = config.source_dns.create_verification_records
-        authoritative_zone_id            = config.source_dns.authoritative_zone_id
-        existing_ses_verification_tokens = config.source_dns.existing_ses_verification_tokens
+        create_verification_records      = try(local.migration_overrides[domain_name].create_source_verification_records, false)
+        authoritative_zone_id            = try(local.migration_overrides[domain_name].source_authoritative_zone_id, var.source_authoritative_zone_id)
+        existing_ses_verification_tokens = try(local.migration_overrides[domain_name].existing_ses_verification_tokens, [])
       }
 
       extra_records = {

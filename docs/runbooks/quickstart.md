@@ -34,10 +34,9 @@ Start with one domain entry in `domain_definitions`.
 
 For a brand-new domain in the target account:
 
-- keep `source_dns.create_verification_records = false`
-- keep `source_dns.existing_ses_verification_tokens = []`
 - set `catch_all` based on the behavior you want
 - set `explicit_recipients` only for addresses that need unique handling
+- leave `migration_overrides` empty
 
 Use [add-a-domain.md](add-a-domain.md) as the reference shape.
 

@@ -15,13 +15,15 @@ AWS account, with optional source-account DNS support during domain migrations.
 
 ## Domain Onboarding Shape
 
-Per-domain authoring is driven by `var.domain_definitions`, typically provided
-through a private `terraform.tfvars` file. Most new domains should only need
-one entry with:
+Per-domain authoring is split into:
+
+- `var.domain_definitions` for steady-state domain behavior
+- `var.migration_overrides` for temporary source-DNS migration settings
+
+Most new domains should only need one `domain_definitions` entry with:
 
 - `enabled`: whether to manage the domain in this environment
 - `receipt_rule_enabled`: whether the per-domain SES receipt rule is enabled
-- `source_dns`: temporary migration-only source verification settings
 - `preserved_records`: extra DNS records that should exist in the target hosted zone
 - `forwarding`:
   - `from_local_part`
@@ -31,16 +33,17 @@ one entry with:
   - `explicit_recipients`
   - `catch_all`
 
-The environment derives the repetitive details from that canonical shape:
+The environment derives the repetitive details from the steady-state shape:
 
 - fully qualified extra-record names
 - `fromEmail`
 - catch-all and explicit forwarding mappings
 - module inputs for enabled domains only
 
-For already-cut-over domains, keep `source_dns.existing_ses_verification_tokens`
-empty unless an active migration still requires preserving an older public TXT
-verification value in the source hosted zone.
+If a domain is being migrated from another zone or AWS account, add a matching
+`migration_overrides` entry only for the temporary source-verification pieces.
+For already-cut-over or brand-new domains, `migration_overrides` should usually
+stay empty.
 
 ## Naming Conventions
 
