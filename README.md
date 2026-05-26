@@ -122,6 +122,7 @@ fails if any non-example Terraform variable file is committed.
 - Local operator equivalents: [docs/runbooks/local-operator-workflows.md](docs/runbooks/local-operator-workflows.md)
 - Architecture and security notes: [docs/runbooks/architecture-and-security.md](docs/runbooks/architecture-and-security.md)
 - Security review checklist: [docs/runbooks/security-review-checklist.md](docs/runbooks/security-review-checklist.md)
+- SES improvement review: [docs/runbooks/ses-forwarding-improvement-review.md](docs/runbooks/ses-forwarding-improvement-review.md)
 - CloudWatch Logs Insights cookbook: [docs/runbooks/cloudwatch-logs-insights-cookbook.md](docs/runbooks/cloudwatch-logs-insights-cookbook.md)
 - Improvement backlog: [docs/runbooks/improvement-backlog.md](docs/runbooks/improvement-backlog.md)
 
