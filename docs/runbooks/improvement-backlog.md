@@ -56,7 +56,7 @@ Current progress:
 
 ### 6. CI Portability
 
-Status: planned
+Status: in progress
 
 - ensure each GitHub workflow has an obvious local equivalent
 - document which workflows are convenience layers versus required deployment

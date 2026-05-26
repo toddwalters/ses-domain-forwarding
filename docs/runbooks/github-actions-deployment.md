@@ -3,6 +3,9 @@
 This repository deploys the SES domain forwarding stack through GitHub Actions
 and AWS OIDC.
 
+If you need local equivalents for these workflows, use
+[local-operator-workflows.md](local-operator-workflows.md).
+
 ## Required GitHub Variables
 
 Configure these environment variables before running the bootstrap workflow:
