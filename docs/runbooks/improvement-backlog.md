@@ -34,7 +34,7 @@ Status: in progress
 
 ### 4. Observability
 
-Status: planned
+Status: in progress
 
 - add a CloudWatch Logs Insights query cookbook
 - consider a small dashboard for Lambda invocations, errors, throttles, and

@@ -120,6 +120,7 @@ fails if any non-example Terraform variable file is committed.
 - Migrate an existing domain: [docs/runbooks/domain-migration-checklist.md](docs/runbooks/domain-migration-checklist.md)
 - GitHub Actions deployment: [docs/runbooks/github-actions-deployment.md](docs/runbooks/github-actions-deployment.md)
 - Architecture and security notes: [docs/runbooks/architecture-and-security.md](docs/runbooks/architecture-and-security.md)
+- CloudWatch Logs Insights cookbook: [docs/runbooks/cloudwatch-logs-insights-cookbook.md](docs/runbooks/cloudwatch-logs-insights-cookbook.md)
 - Improvement backlog: [docs/runbooks/improvement-backlog.md](docs/runbooks/improvement-backlog.md)
 
 ## Local Validation
