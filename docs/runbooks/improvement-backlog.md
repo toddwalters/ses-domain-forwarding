@@ -62,6 +62,11 @@ Status: in progress
 - document which workflows are convenience layers versus required deployment
   mechanics
 
+Current progress:
+
+- local equivalents for all core workflows are documented
+- a lightweight `Makefile` now wraps the most common local operator paths
+
 ### 7. Public Repo Cleanup
 
 Status: in progress
