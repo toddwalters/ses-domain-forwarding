@@ -16,6 +16,10 @@ help:
 	@echo "  TF_STATE_BUCKET"
 	@echo "  TF_STATE_PREFIX"
 	@echo "  AWS_REGION"
+	@echo "Optional profile helpers:"
+	@echo "  TARGET_PROFILE"
+	@echo "  SOURCE_PROFILE"
+	@echo "Optional Terraform overrides:"
 	@echo "  AWS_TARGET_ACCOUNT_ID"
 	@echo "  AWS_SOURCE_ACCOUNT_ID"
 	@echo "  SOURCE_HOSTED_ZONE_ID"
@@ -34,13 +38,25 @@ lambda-build:
 	cd lambda/ses-email-forwarder && npm ci --ignore-scripts && npm audit --omit=dev && npm ls --all && npm test && npm run build
 
 bootstrap-target-validate:
-	cd terraform/bootstrap/target-account && terraform init -backend=false -input=false && terraform validate
+	cd terraform/bootstrap/target-account && \
+		data_dir="$$(mktemp -d)" && \
+		trap 'rm -rf "$$data_dir"' EXIT && \
+		TF_DATA_DIR="$$data_dir" terraform init -backend=false -input=false && \
+		TF_DATA_DIR="$$data_dir" terraform validate
 
 bootstrap-source-dns-validate:
-	cd terraform/bootstrap/source-dns && terraform init -backend=false -input=false && terraform validate
+	cd terraform/bootstrap/source-dns && \
+		data_dir="$$(mktemp -d)" && \
+		trap 'rm -rf "$$data_dir"' EXIT && \
+		TF_DATA_DIR="$$data_dir" terraform init -backend=false -input=false && \
+		TF_DATA_DIR="$$data_dir" terraform validate
 
 prd-validate:
-	cd terraform/envs/prd && terraform init -backend=false -input=false && terraform validate
+	cd terraform/envs/prd && \
+		data_dir="$$(mktemp -d)" && \
+		trap 'rm -rf "$$data_dir"' EXIT && \
+		TF_DATA_DIR="$$data_dir" terraform init -backend=false -input=false && \
+		TF_DATA_DIR="$$data_dir" terraform validate
 
 validate: check-tfvars lambda-build
 	cd terraform && terraform fmt -check -recursive
@@ -52,60 +68,87 @@ prd-init-local:
 	@test -n "$(TF_STATE_BUCKET)" || (echo "TF_STATE_BUCKET is required" && exit 1)
 	@test -n "$(TF_STATE_PREFIX)" || (echo "TF_STATE_PREFIX is required" && exit 1)
 	@test -n "$(AWS_REGION)" || (echo "AWS_REGION is required" && exit 1)
-	cd terraform/envs/prd && terraform init -input=false \
-		-backend-config="bucket=$(TF_STATE_BUCKET)" \
-		-backend-config="key=$(TF_STATE_PREFIX)/envs/prd.tfstate" \
-		-backend-config="region=$(AWS_REGION)" \
-		-backend-config="use_lockfile=true" \
-		-backend-config="encrypt=true"
+	cd terraform/envs/prd && \
+		if [ -n "$(TARGET_PROFILE)" ]; then export AWS_PROFILE="$(TARGET_PROFILE)"; fi && \
+		terraform init -input=false \
+			-backend-config="bucket=$(TF_STATE_BUCKET)" \
+			-backend-config="key=$(TF_STATE_PREFIX)/envs/prd.tfstate" \
+			-backend-config="region=$(AWS_REGION)" \
+			-backend-config="use_lockfile=true" \
+			-backend-config="encrypt=true"
 
 prd-plan-local: lambda-build prd-init-local
-	@test -n "$(AWS_TARGET_ACCOUNT_ID)" || (echo "AWS_TARGET_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(AWS_SOURCE_ACCOUNT_ID)" || (echo "AWS_SOURCE_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(SOURCE_HOSTED_ZONE_ID)" || (echo "SOURCE_HOSTED_ZONE_ID is required" && exit 1)
-	@test -n "$(SOURCE_DNS_ROLE_NAME)" || (echo "SOURCE_DNS_ROLE_NAME is required" && exit 1)
-	cd terraform/envs/prd && terraform validate && terraform plan -input=false -out prd.tfplan \
-		-var-file=terraform.tfvars \
-		-var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" \
-		-var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" \
-		-var "primary_region=$(AWS_REGION)" \
-		-var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" \
-		-var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" \
-		-var "activate_receipt_rule_set=$${ACTIVATE_RECEIPT_RULE_SET:-true}"
+	cd terraform/envs/prd && \
+		set -euo pipefail; \
+		if [ -n "$(TARGET_PROFILE)" ]; then export AWS_PROFILE="$(TARGET_PROFILE)"; fi; \
+		plan_args=( \
+			-input=false \
+			-out prd.tfplan \
+			-var-file=terraform.tfvars \
+			-var "primary_region=$(AWS_REGION)" \
+			-var "activate_receipt_rule_set=$${ACTIVATE_RECEIPT_RULE_SET:-true}" \
+		); \
+		if [ -n "$(TARGET_PROFILE)" ]; then plan_args+=( -var "target_profile=$(TARGET_PROFILE)" ); fi; \
+		if [ -n "$(SOURCE_PROFILE)" ]; then plan_args+=( -var "source_profile=$(SOURCE_PROFILE)" ); fi; \
+		if [ -n "$(AWS_TARGET_ACCOUNT_ID)" ]; then plan_args+=( -var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(AWS_SOURCE_ACCOUNT_ID)" ]; then plan_args+=( -var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(SOURCE_HOSTED_ZONE_ID)" ]; then plan_args+=( -var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" ); fi; \
+		if [ -n "$(SOURCE_DNS_ROLE_NAME)" ]; then \
+			if [ -z "$(AWS_SOURCE_ACCOUNT_ID)" ]; then echo "AWS_SOURCE_ACCOUNT_ID is required when SOURCE_DNS_ROLE_NAME is set"; exit 1; fi; \
+			plan_args+=( -var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" ); \
+		fi; \
+		terraform validate && terraform plan "$${plan_args[@]}"
 	cd terraform/envs/prd && terraform show -json prd.tfplan > prd-plan.json
-	cd terraform/envs/prd && python3 ../../scripts/render_domain_plan_summary.py prd-plan.json
+	cd terraform/envs/prd && python3 ../../../scripts/render_domain_plan_summary.py prd-plan.json
 
 prd-apply-local: lambda-build prd-init-local
-	@test -n "$(AWS_TARGET_ACCOUNT_ID)" || (echo "AWS_TARGET_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(AWS_SOURCE_ACCOUNT_ID)" || (echo "AWS_SOURCE_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(SOURCE_HOSTED_ZONE_ID)" || (echo "SOURCE_HOSTED_ZONE_ID is required" && exit 1)
-	@test -n "$(SOURCE_DNS_ROLE_NAME)" || (echo "SOURCE_DNS_ROLE_NAME is required" && exit 1)
-	cd terraform/envs/prd && terraform apply -auto-approve -input=false \
-		-var-file=terraform.tfvars \
-		-var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" \
-		-var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" \
-		-var "primary_region=$(AWS_REGION)" \
-		-var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" \
-		-var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" \
-		-var "activate_receipt_rule_set=$${ACTIVATE_RECEIPT_RULE_SET:-true}"
+	cd terraform/envs/prd && \
+		set -euo pipefail; \
+		if [ -n "$(TARGET_PROFILE)" ]; then export AWS_PROFILE="$(TARGET_PROFILE)"; fi; \
+		apply_args=( \
+			-auto-approve \
+			-input=false \
+			-var-file=terraform.tfvars \
+			-var "primary_region=$(AWS_REGION)" \
+			-var "activate_receipt_rule_set=$${ACTIVATE_RECEIPT_RULE_SET:-true}" \
+		); \
+		if [ -n "$(TARGET_PROFILE)" ]; then apply_args+=( -var "target_profile=$(TARGET_PROFILE)" ); fi; \
+		if [ -n "$(SOURCE_PROFILE)" ]; then apply_args+=( -var "source_profile=$(SOURCE_PROFILE)" ); fi; \
+		if [ -n "$(AWS_TARGET_ACCOUNT_ID)" ]; then apply_args+=( -var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(AWS_SOURCE_ACCOUNT_ID)" ]; then apply_args+=( -var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(SOURCE_HOSTED_ZONE_ID)" ]; then apply_args+=( -var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" ); fi; \
+		if [ -n "$(SOURCE_DNS_ROLE_NAME)" ]; then \
+			if [ -z "$(AWS_SOURCE_ACCOUNT_ID)" ]; then echo "AWS_SOURCE_ACCOUNT_ID is required when SOURCE_DNS_ROLE_NAME is set"; exit 1; fi; \
+			apply_args+=( -var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" ); \
+		fi; \
+		terraform apply "$${apply_args[@]}"
 
 prd-drift-local: lambda-build prd-init-local
-	@test -n "$(AWS_TARGET_ACCOUNT_ID)" || (echo "AWS_TARGET_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(AWS_SOURCE_ACCOUNT_ID)" || (echo "AWS_SOURCE_ACCOUNT_ID is required" && exit 1)
-	@test -n "$(SOURCE_HOSTED_ZONE_ID)" || (echo "SOURCE_HOSTED_ZONE_ID is required" && exit 1)
-	@test -n "$(SOURCE_DNS_ROLE_NAME)" || (echo "SOURCE_DNS_ROLE_NAME is required" && exit 1)
-	cd terraform/envs/prd && terraform plan -detailed-exitcode -input=false \
-		-var-file=terraform.tfvars \
-		-var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" \
-		-var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" \
-		-var "primary_region=$(AWS_REGION)" \
-		-var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" \
-		-var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" \
-		-var "activate_receipt_rule_set=false"
+	cd terraform/envs/prd && \
+		set -euo pipefail; \
+		if [ -n "$(TARGET_PROFILE)" ]; then export AWS_PROFILE="$(TARGET_PROFILE)"; fi; \
+		drift_args=( \
+			-detailed-exitcode \
+			-input=false \
+			-var-file=terraform.tfvars \
+			-var "primary_region=$(AWS_REGION)" \
+			-var "activate_receipt_rule_set=true" \
+		); \
+		if [ -n "$(TARGET_PROFILE)" ]; then drift_args+=( -var "target_profile=$(TARGET_PROFILE)" ); fi; \
+		if [ -n "$(SOURCE_PROFILE)" ]; then drift_args+=( -var "source_profile=$(SOURCE_PROFILE)" ); fi; \
+		if [ -n "$(AWS_TARGET_ACCOUNT_ID)" ]; then drift_args+=( -var "target_account_id=$(AWS_TARGET_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(AWS_SOURCE_ACCOUNT_ID)" ]; then drift_args+=( -var "source_account_id=$(AWS_SOURCE_ACCOUNT_ID)" ); fi; \
+		if [ -n "$(SOURCE_HOSTED_ZONE_ID)" ]; then drift_args+=( -var "source_authoritative_zone_id=$(SOURCE_HOSTED_ZONE_ID)" ); fi; \
+		if [ -n "$(SOURCE_DNS_ROLE_NAME)" ]; then \
+			if [ -z "$(AWS_SOURCE_ACCOUNT_ID)" ]; then echo "AWS_SOURCE_ACCOUNT_ID is required when SOURCE_DNS_ROLE_NAME is set"; exit 1; fi; \
+			drift_args+=( -var "source_dns_role_arn=arn:aws:iam::$(AWS_SOURCE_ACCOUNT_ID):role/$(SOURCE_DNS_ROLE_NAME)" ); \
+		fi; \
+		terraform plan "$${drift_args[@]}"
 
 smoke-test-local: prd-init-local
 	cd terraform/envs/prd && terraform output -json domain_hosted_zones > /tmp/domain-hosted-zones.json
 	@test -n "$(AWS_REGION)" || (echo "AWS_REGION is required" && exit 1)
+	if [ -n "$(TARGET_PROFILE)" ]; then export AWS_PROFILE="$(TARGET_PROFILE)"; fi; \
 	AWS_REGION_VAR="$(AWS_REGION)" \
 	DOMAIN_HOSTED_ZONES_JSON=/tmp/domain-hosted-zones.json \
 	EXPECTED_RULE_SET_NAME="$$(cd terraform/envs/prd && terraform output -raw receipt_rule_set_name)" \

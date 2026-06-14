@@ -14,14 +14,18 @@ Configure these environment variables before running the bootstrap workflow:
   - the primary AWS region for SES receiving and deployment
 - `AWS_TARGET_ACCOUNT_ID`
   - the AWS account that will host the shared forwarding stack
-- `AWS_SOURCE_ACCOUNT_ID`
-  - the source AWS account used only for migration-time DNS support
 - `TF_STATE_BUCKET`
   - the S3 bucket that stores Terraform state
 - `TF_STATE_PREFIX`
   - the state-key prefix used within the Terraform state bucket
 - `TARGET_ROLE_NAME`
   - the GitHub-assumable provisioner role in the target account
+
+Configure these additional environment variables only when migrating a domain
+from a source account or hosted zone:
+
+- `AWS_SOURCE_ACCOUNT_ID`
+  - the source AWS account used only for migration-time DNS support
 - `SOURCE_DNS_ROLE_NAME`
   - the migration-time DNS role in the source account
 - `SOURCE_HOSTED_ZONE_ID`
@@ -33,6 +37,28 @@ Configure these environment variables before running the bootstrap workflow:
 
 Typical values vary by organization. Keep them in GitHub environment variables
 rather than committing them into the repository.
+
+## Required Production Configuration Secret
+
+Create a `PRD_TFVARS` secret in the `prd` GitHub environment. Its value should
+be the complete contents of the private
+`terraform/envs/prd/terraform.tfvars` file.
+
+The plan, apply, and drift workflows materialize this secret into a temporary
+runner file and pass it to Terraform with `-var-file`. This keeps domain names,
+forwarding destinations, bucket names, and other environment-specific values
+out of the repository.
+
+From an authenticated local checkout, configure or refresh the secret with:
+
+```bash
+gh secret set PRD_TFVARS \
+  --repo <github-owner>/<github-repo> \
+  --env prd \
+  < terraform/envs/prd/terraform.tfvars
+```
+
+Refresh this secret whenever the private production tfvars change.
 
 ## Naming Notes
 
@@ -66,7 +92,7 @@ bootstrap succeeds.
 
 ## Workflow Order
 
-1. Add bootstrap secrets and environment variables.
+1. Add bootstrap secrets, environment variables, and `PRD_TFVARS`.
 2. Run `00-bootstrap-github-aws`.
    - creates the Terraform state bucket
    - creates the GitHub OIDC provider and target provisioner role
@@ -79,7 +105,8 @@ bootstrap succeeds.
 4. Run `15-cutover-readiness` for a pre-cutover AWS state snapshot.
 5. Run `18-post-cutover-smoke-test` after cutover or after operational changes.
 6. Run `20-terraform-apply` after review.
-7. Use `25-drift-detection` manually or on schedule.
+7. Use `25-drift-detection` manually after the environment is configured.
+   Add a schedule to that workflow only after a successful manual drift run.
 8. Follow [domain-migration-checklist.md](domain-migration-checklist.md) for
    domain cutover work.
 

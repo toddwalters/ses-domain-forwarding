@@ -18,6 +18,8 @@ make help
 
 - you have a private `terraform.tfvars`
 - your AWS credentials or named profiles can reach the target account
+- if you use named local AWS profiles, set `TARGET_PROFILE` and optionally
+  `SOURCE_PROFILE` before running the local `Makefile` wrappers
 - you have Terraform, Node.js, npm, and the AWS CLI installed
 - you are running commands from the repository root unless otherwise noted
 
@@ -77,6 +79,9 @@ GitHub workflow purpose:
 Local equivalent:
 
 ```bash
+export TARGET_PROFILE=<target-profile>
+export SOURCE_PROFILE=<source-profile> # only for source-DNS migration work
+
 cd lambda/ses-email-forwarder
 npm ci --ignore-scripts
 npm test
@@ -94,15 +99,23 @@ terraform validate
 
 terraform plan -input=false -out prd.tfplan \
   -var-file=terraform.tfvars \
+  -var "target_profile=<target-profile>" \
   -var "target_account_id=<target-account-id>" \
-  -var "source_account_id=<source-account-id>" \
   -var "primary_region=<aws-region>" \
-  -var "source_authoritative_zone_id=<source-hosted-zone-id>" \
-  -var "source_dns_role_arn=arn:aws:iam::<source-account-id>:role/<source-dns-role-name>" \
   -var "activate_receipt_rule_set=true"
 
 terraform show -json prd.tfplan > prd-plan.json
-python3 ../../scripts/render_domain_plan_summary.py prd-plan.json
+python3 ../../../scripts/render_domain_plan_summary.py prd-plan.json
+```
+
+Add these only when a domain still needs temporary source-account verification
+records during migration:
+
+```bash
+  -var "source_account_id=<source-account-id>" \
+  -var "source_profile=<source-profile>" \
+  -var "source_authoritative_zone_id=<source-hosted-zone-id>" \
+  -var "source_dns_role_arn=arn:aws:iam::<source-account-id>:role/<source-dns-role-name>"
 ```
 
 ## `15-cutover-readiness`
@@ -150,6 +163,8 @@ GitHub workflow purpose:
 Local equivalent:
 
 ```bash
+export TARGET_PROFILE=<target-profile>
+
 cd terraform/envs/prd
 terraform init -input=false \
   -backend-config="bucket=<tf-state-bucket>" \
@@ -165,7 +180,7 @@ DOMAIN_HOSTED_ZONES_JSON=/tmp/domain-hosted-zones.json \
 EXPECTED_RULE_SET_NAME="$(terraform output -raw receipt_rule_set_name)" \
 SHARED_BUCKET_NAME="$(terraform output -raw shared_bucket_name)" \
 FORWARDER_LAMBDA_ARN="$(terraform output -raw forwarder_lambda_arn)" \
-python3 ../../scripts/post_cutover_smoke_test.py
+python3 ../../../scripts/post_cutover_smoke_test.py
 ```
 
 To test only one domain:
@@ -177,7 +192,7 @@ DOMAIN_HOSTED_ZONES_JSON=/tmp/domain-hosted-zones.json \
 EXPECTED_RULE_SET_NAME="$(terraform output -raw receipt_rule_set_name)" \
 SHARED_BUCKET_NAME="$(terraform output -raw shared_bucket_name)" \
 FORWARDER_LAMBDA_ARN="$(terraform output -raw forwarder_lambda_arn)" \
-python3 ../../scripts/post_cutover_smoke_test.py
+python3 ../../../scripts/post_cutover_smoke_test.py
 ```
 
 ## `20-terraform-apply`
@@ -189,6 +204,9 @@ GitHub workflow purpose:
 Local equivalent:
 
 ```bash
+export TARGET_PROFILE=<target-profile>
+export SOURCE_PROFILE=<source-profile> # only for source-DNS migration work
+
 cd lambda/ses-email-forwarder
 npm ci --ignore-scripts
 npm audit --omit=dev
@@ -206,13 +224,18 @@ terraform init -input=false \
 
 terraform apply -auto-approve -input=false \
   -var-file=terraform.tfvars \
+  -var "target_profile=<target-profile>" \
   -var "target_account_id=<target-account-id>" \
-  -var "source_account_id=<source-account-id>" \
   -var "primary_region=<aws-region>" \
-  -var "source_authoritative_zone_id=<source-hosted-zone-id>" \
-  -var "source_dns_role_arn=arn:aws:iam::<source-account-id>:role/<source-dns-role-name>" \
   -var "activate_receipt_rule_set=<true-or-false>"
 ```
+
+Add the source-profile and source-DNS role arguments only when a domain still
+needs migration-time verification writes in the source account.
+
+Those migration arguments include `source_account_id`, `source_profile`,
+`source_authoritative_zone_id`, and `source_dns_role_arn` as shown in the plan
+example above.
 
 ## `25-drift-detection`
 
@@ -223,6 +246,9 @@ GitHub workflow purpose:
 Local equivalent:
 
 ```bash
+export TARGET_PROFILE=<target-profile>
+export SOURCE_PROFILE=<source-profile> # only for source-DNS migration work
+
 cd lambda/ses-email-forwarder
 npm ci --ignore-scripts
 npm run build
@@ -237,13 +263,16 @@ terraform init -input=false \
 
 terraform plan -detailed-exitcode -input=false \
   -var-file=terraform.tfvars \
+  -var "target_profile=<target-profile>" \
   -var "target_account_id=<target-account-id>" \
-  -var "source_account_id=<source-account-id>" \
   -var "primary_region=<aws-region>" \
-  -var "source_authoritative_zone_id=<source-hosted-zone-id>" \
-  -var "source_dns_role_arn=arn:aws:iam::<source-account-id>:role/<source-dns-role-name>" \
-  -var "activate_receipt_rule_set=false"
+  -var "activate_receipt_rule_set=true"
 ```
+
+Add the source-profile and source-DNS role arguments only when a domain still
+needs migration-time verification writes in the source account.
+
+Use the same migration-only arguments shown in the plan example above.
 
 Interpretation:
 

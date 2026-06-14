@@ -69,7 +69,8 @@ terraform plan -refresh=false -input=false \
 
 ## 6. Configure GitHub Actions
 
-Set the GitHub environment variables and bootstrap secrets described in
+Set the GitHub environment variables, `PRD_TFVARS` environment secret, and
+bootstrap secrets described in
 [github-actions-deployment.md](github-actions-deployment.md).
 
 For brand-new domains that are not migrating from a source account, some
