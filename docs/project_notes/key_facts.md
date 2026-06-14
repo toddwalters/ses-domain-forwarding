@@ -22,6 +22,9 @@ forwarding framework quickly.
 ## Operator Surface
 
 - GitHub Actions deploy through AWS OIDC by default
+- AWS-backed Terraform workflows read private deployment configuration from
+  the protected `prd` environment secret named `PRD_TFVARS`
+- scheduled drift detection is opt-in after a successful manual run
 - equivalent local operator commands are documented
 - readiness and smoke-test workflows provide AWS-backed operational checks
 - CloudWatch alarms cover Lambda errors and throttles by default

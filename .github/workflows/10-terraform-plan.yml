@@ -50,16 +50,19 @@ jobs:
           TF_STATE_PREFIX_VAR: ${{ vars.TF_STATE_PREFIX }}
           SOURCE_DNS_ROLE_NAME_VAR: ${{ vars.SOURCE_DNS_ROLE_NAME }}
           SOURCE_HOSTED_ZONE_ID_VAR: ${{ vars.SOURCE_HOSTED_ZONE_ID }}
+          PRD_TFVARS: ${{ secrets.PRD_TFVARS }}
         run: |
           set -euo pipefail
 
           : "${AWS_REGION_VAR:?Missing required variable AWS_REGION}"
           : "${AWS_TARGET_ACCOUNT_ID_VAR:?Missing required variable AWS_TARGET_ACCOUNT_ID}"
-          : "${AWS_SOURCE_ACCOUNT_ID_VAR:?Missing required variable AWS_SOURCE_ACCOUNT_ID}"
           : "${TF_STATE_BUCKET_VAR:?Missing required variable TF_STATE_BUCKET}"
           : "${TF_STATE_PREFIX_VAR:?Missing required variable TF_STATE_PREFIX}"
-          : "${SOURCE_DNS_ROLE_NAME_VAR:?Missing required variable SOURCE_DNS_ROLE_NAME}"
-          : "${SOURCE_HOSTED_ZONE_ID_VAR:?Missing required variable SOURCE_HOSTED_ZONE_ID}"
+          : "${PRD_TFVARS:?Missing required secret PRD_TFVARS}"
+
+          TFVARS_FILE="$RUNNER_TEMP/prd.tfvars"
+          printf '%s\n' "$PRD_TFVARS" > "$TFVARS_FILE"
+          chmod 600 "$TFVARS_FILE"
 
           terraform init -input=false \
             -backend-config="bucket=${TF_STATE_BUCKET_VAR}" \
@@ -74,13 +77,27 @@ jobs:
           PLAN_TEXT="$RUNNER_TEMP/prd-plan.txt"
           PLAN_JSON="$RUNNER_TEMP/prd-plan.json"
 
-          terraform plan -input=false -out "$PLAN_FILE" \
-            -var "target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}" \
-            -var "source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}" \
-            -var "primary_region=${AWS_REGION_VAR}" \
-            -var "source_authoritative_zone_id=${SOURCE_HOSTED_ZONE_ID_VAR}" \
-            -var "source_dns_role_arn=arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}" \
+          plan_args=(
+            -input=false
+            -out "$PLAN_FILE"
+            -var-file="$TFVARS_FILE"
+            -var "target_account_id=${AWS_TARGET_ACCOUNT_ID_VAR}"
+            -var "primary_region=${AWS_REGION_VAR}"
             -var "activate_receipt_rule_set=true"
+          )
+
+          if [ -n "$AWS_SOURCE_ACCOUNT_ID_VAR" ]; then
+            plan_args+=( -var "source_account_id=${AWS_SOURCE_ACCOUNT_ID_VAR}" )
+          fi
+          if [ -n "$SOURCE_HOSTED_ZONE_ID_VAR" ]; then
+            plan_args+=( -var "source_authoritative_zone_id=${SOURCE_HOSTED_ZONE_ID_VAR}" )
+          fi
+          if [ -n "$SOURCE_DNS_ROLE_NAME_VAR" ]; then
+            : "${AWS_SOURCE_ACCOUNT_ID_VAR:?AWS_SOURCE_ACCOUNT_ID is required when SOURCE_DNS_ROLE_NAME is set}"
+            plan_args+=( -var "source_dns_role_arn=arn:aws:iam::${AWS_SOURCE_ACCOUNT_ID_VAR}:role/${SOURCE_DNS_ROLE_NAME_VAR}" )
+          fi
+
+          terraform plan "${plan_args[@]}"
 
           terraform show -no-color "$PLAN_FILE" > "$PLAN_TEXT"
           terraform show -json "$PLAN_FILE" > "$PLAN_JSON"
@@ -89,7 +106,7 @@ jobs:
             echo "## Terraform Plan"
             echo ""
             echo "- Target account: \`${AWS_TARGET_ACCOUNT_ID_VAR}\`"
-            echo "- Source DNS account: \`${AWS_SOURCE_ACCOUNT_ID_VAR}\`"
+            echo "- Source DNS account: \`${AWS_SOURCE_ACCOUNT_ID_VAR:-not configured}\`"
             echo "- Receipt rule set activation: \`true\`"
             echo "- Plan artifact: \`prd-tfplan\`"
           } >> "$GITHUB_STEP_SUMMARY"

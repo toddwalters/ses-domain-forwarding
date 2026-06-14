@@ -42,3 +42,20 @@ Why:
 
 - preserves historical mail while reducing steady-state storage cost
 - keeps lifecycle behavior explicit instead of leaving retention undefined
+
+## ADR-004: Supply Production Terraform Configuration Through GitHub Secrets
+
+- Keep complete production tfvars outside Git.
+- Store them as the `PRD_TFVARS` secret in the protected `prd` GitHub
+  environment.
+- Materialize the secret only in the temporary runner directory for plan,
+  apply, and drift operations.
+- Keep scheduled drift opt-in for this reusable template until an adopter has
+  configured and manually verified a live environment.
+
+Why:
+
+- GitHub workflows and local operators use the same Terraform configuration
+  shape without publishing private domain or forwarding data.
+- The public template does not generate recurring failed runs before it has
+  been configured for a real deployment.

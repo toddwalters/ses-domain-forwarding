@@ -80,7 +80,7 @@ Provide them through:
 
 - a private `terraform.tfvars`
 - GitHub environment variables
-- GitHub secrets
+- the protected GitHub environment secret `PRD_TFVARS`
 
 See [../../terraform/envs/prd/terraform.tfvars.example](../../terraform/envs/prd/terraform.tfvars.example)
 for the expected shape.
